@@ -3,6 +3,33 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+from sqlalchemy import create_engine, Column, String, Integer, ForeignKey
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, relationship
+
+Base = declarative_base()
+
+class ArticleGroup(Base):
+    __tablename__ = 'article_group'
+    id = Column(Integer, primary_key=True)
+    name = Column(String)
+
+class Article(Base):
+    __tablename__ = 'article'
+    id = Column(Integer, primary_key=True)
+    text = Column(String)
+    link = Column(String)
+    headlines = Column(String)
+    group_id = Column(Integer, ForeignKey('article_group.id'))
+    group = relationship("ArticleGroup", back_populates="articles")
+
+ArticleGroup.articles = relationship("Article", order_by=Article.id, back_populates="group")
+
+# Create an engine that stores data in the local directory's
+engine = create_engine('sqlite:///articles.db')
+Base.metadata.create_all(engine)
+
+
 """
 # Welcome to Streamlit!
 
@@ -40,3 +67,39 @@ st.altair_chart(alt.Chart(df, height=700, width=700)
         color=alt.Color("idx", legend=None, scale=alt.Scale()),
         size=alt.Size("rand", legend=None, scale=alt.Scale(range=[1, 150])),
     ))
+
+import streamlit as st
+from sqlalchemy.orm import sessionmaker
+import random
+
+# Database session setup
+Session = sessionmaker(bind=engine)
+session = Session()
+
+def get_random_articles():
+    groups = session.query(ArticleGroup).all()
+    if not groups:
+        return []
+    group = random.choice(groups)
+    articles = group.articles
+    random.shuffle(articles)
+    return [(article.headlines.split('|')[i % 4], article.text, article.link) for i, article in enumerate(articles)]
+
+def display_articles():
+    st.header("Explore Random Articles")
+    articles = get_random_articles()
+    if not articles:
+        st.write("No articles found. Please check the database.")
+        return
+    for headline, text, link in articles:
+        with st.expander(f"Read about: {headline}"):
+            st.write(text)
+            st.markdown(f"[Read more]({link})", unsafe_allow_html=True)
+
+def main():
+    st.title('Welcome to the Streamlit Article Explorer')
+    display_articles()
+
+if __name__ == "__main__":
+    main()
+
